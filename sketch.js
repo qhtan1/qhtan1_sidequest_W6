@@ -22,7 +22,13 @@ let playerAnis = {
   attack: { row: 3, frames: 6, frameDelay: 2 },
 };
 
+// --- Globals ---
+let ground;
+let platforms = [];
+
 // level constants
+let isGrounded = false;
+let jumpForce = 12;
 
 // camera view size
 const VIEWW = 320,
@@ -33,7 +39,7 @@ const FRAME_W = 32,
   FRAME_H = 32;
 
 // gravity
-const GRAVITY = 0;
+const GRAVITY = 20;
 
 function preload() {
   // --- IMAGES ---
@@ -41,49 +47,73 @@ function preload() {
 }
 
 function setup() {
-  // pixelated rendering with autoscaling
   new Canvas(VIEWW, VIEWH, "pixelated");
-  
-  // needed to correct an visual artifacts from attempted antialiasing
   allSprites.pixelPerfect = true;
- 
+
   world.gravity.y = GRAVITY;
 
-  // --- PLAYER ---
-  player = new Sprite(VIEWW/2, VIEWH/2, FRAME_W, FRAME_H); // create the player
-  player.spriteSheet = playerImg; // use the sprite sheet
-  player.rotationLock = true; // turn off rotations (player shouldn't rotate)
+  player = new Sprite(VIEWW / 2, VIEWH / 2, FRAME_W, FRAME_H);
+  player.spriteSheet = playerImg;
+  player.rotationLock = true;
 
-  // player animation parameters
   player.anis.w = FRAME_W;
   player.anis.h = FRAME_H;
-  player.anis.offset.y = -4; // offset the collision box up
-  player.addAnis(playerAnis); // add the player animations defined earlier
-  player.ani = "idle"; // default to the idle animation
-  player.w = 18; // set the width of the collsion box
-  player.h = 20; // set the height of the collsion box
-  player.removeColliders();
-  player.friction = 0; // set the friciton to 0 so we don't stick to walls
-  player.bounciness = 0; // set the bounciness to 0 so the player doesn't bounce
+  player.anis.offset.y = -4;
+  player.addAnis(playerAnis);
+  player.ani = "idle";
+
+  // Use a smaller collider box
+  player.w = 18;
+  player.h = 20;
+
+  // Do NOT remove colliders in commit 1 (keeps physics stable)
+  player.friction = 0;
+  player.bounciness = 0;
+
+  // --- Ground ---
+  ground = new Sprite(width / 2, height - 20, width, 40, "static");
+
+  // --- Platforms (must be inside the 320x180 view) ---
+  let p1 = new Sprite(90, 120, 90, 12, "static");
+  let p2 = new Sprite(230, 85, 90, 12, "static");
+
+  platforms.push(p1, p2);
 }
 
 function draw() {
-  // --- BACKGROUND ---
   background("skyblue");
 
-  // --- PLAYER CONTROLS ---
-  if (kb.presses("up")) {
-    player.ani = "jump";
-  } else if (kb.presses("right")){  
-    player.ani = "run";
-    player.mirror.x = false;  
-  } else if (kb.presses("left")){  
-    player.ani = "run";
-    player.mirror.x = true;  
-  } else if (kb.presses(" ")){  
-    player.ani = "attack";  
-  } else if (kb.presses("down")){  
-    // Grounded: idle or run
-    player.ani = "idle";  
+  // --- Ground check (update first) ---
+  isGrounded = player.colliding(ground);
+  for (let p of platforms) {
+    if (player.colliding(p)) isGrounded = true;
+  }
+
+  // --- Movement ---
+  let moveSpeed = 5;
+
+  // Horizontal movement (hold to move)
+  if (kb.pressing("a") || kb.pressing("left")) {
+    player.vel.x = -moveSpeed;
+    player.mirror.x = true;
+  } else if (kb.pressing("d") || kb.pressing("right")) {
+    player.vel.x = moveSpeed;
+    player.mirror.x = false;
+  } else {
+    player.vel.x = 0;
+  }
+
+  // Jump (press once)
+  if ((kb.presses("w") || kb.presses("up")) && isGrounded) {
+    player.vel.y = -jumpForce;
+  }
+
+  // --- Animation ---
+  if (!isGrounded) {
+    player.changeAni("jump");
+  } else if (player.vel.x !== 0) {
+    player.changeAni("run");
+  } else {
+    player.changeAni("idle");
   }
 }

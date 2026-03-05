@@ -138,15 +138,15 @@ function setup() {
   landEnv.setADSR(0.005, 0.06, 0.0, 0.08);
   landEnv.setRange(0.18, 0);
 }
-function draw() {
-  // Keep camera stable (shake modifies camera slightly)
-  applyShake();
 
+function draw() {
+  applyShake();
   background(170, 220, 255);
 
-  let wasGrounded = isGrounded;
-
   // --- Ground check (top-only) ---
+  let wasGrounded = isGrounded;
+  let prevVy = player.vel.y;
+
   isGrounded = isStandingOn(ground);
   for (let p of platforms) {
     if (isStandingOn(p)) isGrounded = true;
@@ -155,20 +155,6 @@ function draw() {
   // --- Coyote time ---
   if (isGrounded) coyoteTimer = COYOTE_FRAMES;
   else coyoteTimer = max(0, coyoteTimer - 1);
-
-  // --- Landing event ---
-  if (!wasGrounded && isGrounded) {
-    spawnDust(player.x, player.y + player.h / 2, 10);
-    startShake(12, 3);
-    landOsc.amp(0);
-    landOsc.freq(120);
-    landEnv.play(landOsc);
-  }
-
-  // --- Clamp tiny landing bounce ---
-  if (isGrounded && player.vel.y > 0) {
-    player.vel.y = 0;
-  }
 
   // --- Horizontal movement (accelerated + capped) ---
   if (kb.pressing("a") || kb.pressing("left")) {
@@ -190,16 +176,41 @@ function draw() {
     (isGrounded || coyoteTimer > 0)
   ) {
     player.vel.y = -JUMP_FORCE;
+    coyoteTimer = 0;
+
+    spawnDust(player.x, player.y + player.h / 2, 8);
+
+    // Jump sound
     jumpOsc.amp(0);
     jumpOsc.freq(520);
     jumpEnv.play(jumpOsc);
-    coyoteTimer = 0;
-    spawnDust(player.x, player.y + player.h / 2, 8);
+
+    // Trail burst (captures a few snapshots)
+    for (let i = 0; i < 4; i++) {
+      trail.push({ x: player.x, y: player.y, life: 12 });
+    }
   }
 
   // --- Velocity clamps ---
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
+
+  // --- Instant landing trigger ---
+  // Trigger when we were falling and now we're grounded (or vertical speed got clamped)
+  if (!wasGrounded && isGrounded && prevVy > 0.1) {
+    spawnDust(player.x, player.y + player.h / 2, 10);
+    startShake(12, 3);
+
+    // Land sound
+    landOsc.amp(0);
+    landOsc.freq(120);
+    landEnv.play(landOsc);
+  }
+
+  // --- Clamp tiny landing bounce ---
+  if (isGrounded && player.vel.y > 0) {
+    player.vel.y = 0;
+  }
 
   // --- Collision dust (simple) ---
   if (isGrounded && abs(player.vel.x) > 2.5 && player.colliding(ground)) {
@@ -211,13 +222,11 @@ function draw() {
   if (!isGrounded) desiredAni = "jump";
   else if (abs(player.vel.x) > 0.2) desiredAni = "run";
 
-  if (player.ani?.name !== desiredAni) {
-    player.changeAni(desiredAni);
-  }
-
-  // --- Attack (Space) ---
+  // If attacking, let attack override briefly
   if (kb.presses(" ")) {
     player.changeAni("attack");
+  } else if (player.ani?.name !== desiredAni) {
+    player.changeAni(desiredAni);
   }
 
   // --- Draw ---
@@ -225,24 +234,13 @@ function draw() {
   updateParticles();
   updateTrail();
 
-  // --- Debug overlay (temporary) ---
-  camera.off();
-  fill(0);
-  noStroke();
-  textSize(10);
-  text(
-    "sprites: " +
-      allSprites.length +
-      "  x:" +
-      nf(player.x, 1, 1) +
-      "  y:" +
-      nf(player.y, 1, 1) +
-      "  vy:" +
-      nf(player.vel.y, 1, 2),
-    6,
-    14,
-  );
-  camera.on();
+  // --- Debug overlay (optional) ---
+  // camera.off();
+  // fill(0);
+  // noStroke();
+  // textSize(10);
+  // text("x:" + nf(player.x, 1, 1) + " y:" + nf(player.y, 1, 1), 6, 14);
+  // camera.on();
 }
 
 function updateParticles() {

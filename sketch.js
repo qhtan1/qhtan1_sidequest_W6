@@ -245,24 +245,6 @@ function draw() {
   camera.on();
 }
 
-function updateParticles() {
-  // Update and draw particles
-  noStroke();
-  for (let i = particles.length - 1; i >= 0; i--) {
-    let p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.08; // gravity for dust
-    p.life--;
-
-    let a = map(p.life, 0, 22, 0, 180);
-    fill(255, 255, 255, a);
-    circle(p.x, p.y, p.r);
-
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-}
-
 function updateTrail() {
   // Draw jump trail
   noStroke();

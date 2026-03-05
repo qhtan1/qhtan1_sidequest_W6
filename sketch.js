@@ -47,6 +47,9 @@ let jumpEnv;
 let landOsc;
 let landEnv;
 
+let groundImg, platformLCImg, platformRCImg;
+let audioEnabled = false;
+
 // --- Control tuning ---
 const MOVE_ACCEL = 0.45;
 const MOVE_FRICTION = 0.82;
@@ -74,6 +77,11 @@ const GRAVITY = 10;
 function preload() {
   // --- IMAGES ---
   playerImg = loadImage("assets/foxSpriteSheet.png");
+
+  // --- Tiles (provided assets) ---
+  groundImg = loadImage("assets/groundTile.png");
+  platformLCImg = loadImage("assets/platformLC.png");
+  platformRCImg = loadImage("assets/platformRC.png");
 }
 
 function setup() {
@@ -122,8 +130,6 @@ function setup() {
   ground.friction = 0.8;
   for (let p of platforms) p.friction = 0.8;
 
-  userStartAudio(); // enable audio after first user interaction
-
   // --- Jump sound ---
   jumpOsc = new p5.Oscillator("triangle");
   jumpEnv = new p5.Envelope();
@@ -139,13 +145,34 @@ function setup() {
   landOsc.amp(0);
   landEnv.setADSR(0.005, 0.06, 0.0, 0.08);
   landEnv.setRange(0.18, 0);
+
+  // Audio will be enabled on first user input (reliable browser behavior)
+  audioEnabled = false;
 }
 
 function draw() {
   applyShake();
   background(170, 220, 255);
 
+  // --- Enable audio only after a real user gesture ---
+  if (
+    !audioEnabled &&
+    (kb.presses("a") ||
+      kb.presses("d") ||
+      kb.presses("w") ||
+      kb.presses("up") ||
+      kb.presses(" ") ||
+      kb.presses("left") ||
+      kb.presses("right"))
+  ) {
+    userStartAudio();
+    audioEnabled = true;
+  }
+
   if (landCooldown > 0) landCooldown--;
+
+  // --- Track grounded transitions reliably ---
+  let wasGrounded = isGrounded;
 
   // --- Ground check (top-only) ---
   isGrounded = isStandingOn(ground);
@@ -180,9 +207,11 @@ function draw() {
 
     spawnDust(player.x, player.y + player.h / 2, 8);
 
-    jumpOsc.amp(0);
-    jumpOsc.freq(520);
-    jumpEnv.play(jumpOsc);
+    if (audioEnabled) {
+      jumpOsc.amp(0);
+      jumpOsc.freq(520);
+      jumpEnv.play(jumpOsc);
+    }
   }
 
   // --- Velocity clamps ---
@@ -194,22 +223,19 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (event-based + lastVy) ---
-  let landedNow = player.collided(ground);
-  for (let p of platforms) {
-    if (player.collided(p)) landedNow = true;
-  }
-
-  // lastVy captures the real previous-frame falling speed
-  if (landedNow && lastVy > 0.6 && landCooldown === 0) {
+  // --- Landing trigger (grounded transition + lastVy) ---
+  // This does NOT depend on collided/colliding event timing.
+  if (!wasGrounded && isGrounded && lastVy > 0.6 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
-    landOsc.amp(0);
-    landOsc.freq(120);
-    landEnv.play(landOsc);
+    if (audioEnabled) {
+      landOsc.amp(0);
+      landOsc.freq(140);
+      landEnv.play(landOsc);
+    }
 
-    landCooldown = 10;
+    landCooldown = 12;
   }
 
   // --- Clamp tiny landing bounce ---
@@ -233,11 +259,17 @@ function draw() {
     player.changeAni(desiredAni);
   }
 
+  // --- Draw sprites (player uses sprite sheet) ---
   allSprites.draw();
+
+  // --- Draw tile textures on top of colliders (visual only) ---
+  drawPlatformTiles();
+  drawGroundTiles();
+
+  // --- VFX ---
   updateParticles();
   updateTrail();
 
-  // --- Update lastVy at end of frame ---
   lastVy = player.vel.y;
 }
 
@@ -333,4 +365,55 @@ function spawnDust(x, y, count) {
       r: 3,
     });
   }
+}
+
+function drawGroundTiles() {
+  // Draw repeating ground tiles across the ground collider
+  if (!groundImg) return;
+
+  push();
+  imageMode(CENTER);
+
+  let left = ground.x - ground.w / 2;
+  let right = ground.x + ground.w / 2;
+  let top = ground.y - ground.h / 2;
+
+  let tileW = 32;
+  let tileH = 32;
+
+  for (let x = left; x < right; x += tileW) {
+    image(groundImg, x + tileW / 2, top + tileH / 2, tileW, tileH);
+  }
+
+  pop();
+}
+
+function drawPlatformTiles() {
+  // Draw platform tiles: left cap + stretch + right cap
+  if (!platformLCImg || !platformRCImg) return;
+
+  push();
+  imageMode(CENTER);
+
+  let tileW = 32;
+  let tileH = 32;
+
+  for (let p of platforms) {
+    let left = p.x - p.w / 2;
+    let right = p.x + p.w / 2;
+    let y = p.y;
+
+    // Left cap
+    image(platformLCImg, left + tileW / 2, y, tileW, tileH);
+
+    // Middle fill (reuse left cap scaled slightly if no middle tile exists)
+    for (let x = left + tileW; x < right - tileW; x += tileW) {
+      image(platformLCImg, x + tileW / 2, y, tileW, tileH);
+    }
+
+    // Right cap
+    image(platformRCImg, right - tileW / 2, y, tileW, tileH);
+  }
+
+  pop();
 }

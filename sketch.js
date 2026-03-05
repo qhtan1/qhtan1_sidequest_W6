@@ -120,27 +120,21 @@ function setup() {
   ground.friction = 0.8;
   for (let p of platforms) p.friction = 0.8;
 
+  userStartAudio(); // enable audio after first user interaction
+
   // --- Jump sound ---
   jumpOsc = new p5.Oscillator("triangle");
   jumpEnv = new p5.Envelope();
-
   jumpOsc.start();
   jumpOsc.amp(0);
-  jumpOsc.freq(520);
-  jumpEnv.play(jumpOsc);
-  // Jump
   jumpEnv.setADSR(0.005, 0.04, 0.0, 0.06);
   jumpEnv.setRange(0.22, 0);
 
   // --- Land sound ---
   landOsc = new p5.Oscillator("sine");
   landEnv = new p5.Envelope();
-
   landOsc.start();
   landOsc.amp(0);
-  landOsc.freq(120);
-  landEnv.play(landOsc);
-  // Land
   landEnv.setADSR(0.005, 0.06, 0.0, 0.08);
   landEnv.setRange(0.18, 0);
 }
@@ -166,6 +160,9 @@ function draw() {
   if (!wasGrounded && isGrounded) {
     spawnDust(player.x, player.y + player.h / 2, 10);
     startShake(12, 3);
+    landOsc.amp(0);
+    landOsc.freq(120);
+    landEnv.play(landOsc);
   }
 
   // --- Clamp tiny landing bounce ---
@@ -193,6 +190,9 @@ function draw() {
     (isGrounded || coyoteTimer > 0)
   ) {
     player.vel.y = -JUMP_FORCE;
+    jumpOsc.amp(0);
+    jumpOsc.freq(520);
+    jumpEnv.play(jumpOsc);
     coyoteTimer = 0;
     spawnDust(player.x, player.y + player.h / 2, 8);
   }
@@ -223,6 +223,7 @@ function draw() {
   // --- Draw ---
   allSprites.draw();
   updateParticles();
+  updateTrail();
 
   // --- Debug overlay (temporary) ---
   camera.off();
@@ -320,4 +321,18 @@ function isStandingOn(s, tolerance = 2) {
   let fallingOrStill = player.vel.y >= 0;
 
   return player.colliding(s) && closeEnough && aboveSurface && fallingOrStill;
+}
+
+function spawnDust(x, y, count) {
+  // Spawn simple dust particles
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: x + random(-6, 6),
+      y: y + random(-2, 2),
+      vx: random(-1.2, 1.2),
+      vy: random(-1.8, -0.2),
+      life: int(random(12, 22)),
+      r: 3,
+    });
+  }
 }

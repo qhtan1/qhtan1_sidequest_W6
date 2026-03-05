@@ -37,6 +37,16 @@ let particles = [];
 let shakeFrames = 0;
 let shakeStrength = 0;
 
+// --- Jump trail ---
+let trail = [];
+
+// --- Sound ---
+let jumpOsc;
+let jumpEnv;
+
+let landOsc;
+let landEnv;
+
 // --- Control tuning ---
 const MOVE_ACCEL = 0.45;
 const MOVE_FRICTION = 0.82;
@@ -65,6 +75,8 @@ function preload() {
 }
 
 function setup() {
+  userStartAudio(); // enable audio after first user interaction
+
   new Canvas(VIEWW, VIEWH, "pixelated");
   allSprites.pixelPerfect = true;
 
@@ -109,6 +121,26 @@ function setup() {
   }
   ground.friction = 0.8;
   for (let p of platforms) p.friction = 0.8;
+
+  // --- Jump sound ---
+  jumpOsc = new p5.Oscillator("triangle");
+  jumpEnv = new p5.Envelope();
+
+  jumpOsc.start();
+  jumpOsc.amp(0);
+
+  jumpEnv.setADSR(0.01, 0.05, 0.1, 0.1);
+  jumpEnv.setRange(0.25, 0);
+
+  // --- Land sound ---
+  landOsc = new p5.Oscillator("sine");
+  landEnv = new p5.Envelope();
+
+  landOsc.start();
+  landOsc.amp(0);
+
+  landEnv.setADSR(0.01, 0.08, 0.05, 0.1);
+  landEnv.setRange(0.2, 0);
 }
 
 function draw() {
@@ -132,7 +164,10 @@ function draw() {
   // Landing VFX
   if (!wasGrounded && isGrounded) {
     spawnDust(player.x, player.y + player.h / 2, 10);
-    startShake(6, 1.5);
+    startShake(10, 2);
+
+    landOsc.freq(120);
+    landEnv.play(landOsc);
   }
 
   // Clamp landing bounce
@@ -156,12 +191,29 @@ function draw() {
 
   // --- Jump ---
   if (
-    (kb.presses("w") || kb.presses("up")) &&
+    (kb.presses("w") || kb.presses(" ") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
   ) {
     player.vel.y = -JUMP_FORCE;
     coyoteTimer = 0;
     spawnDust(player.x, player.y + player.h / 2, 8);
+  }
+  player.vel.y = -JUMP_FORCE;
+  coyoteTimer = 0;
+
+  spawnDust(player.x, player.y + player.h / 2, 8);
+
+  // play jump sound
+  jumpOsc.freq(520);
+  jumpEnv.play(jumpOsc);
+
+  // start trail
+  for (let i = 0; i < 3; i++) {
+    trail.push({
+      x: player.x,
+      y: player.y,
+      life: 12,
+    });
   }
 
   // --- Velocity clamps ---
@@ -183,6 +235,7 @@ function draw() {
   }
 
   updateParticles();
+  updateTrail();
   pop();
 }
 
@@ -215,6 +268,27 @@ function updateParticles() {
     circle(p.x, p.y, p.r);
 
     if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function updateTrail() {
+  // Draw jump trail
+  noStroke();
+
+  for (let i = trail.length - 1; i >= 0; i--) {
+    let t = trail[i];
+
+    let a = map(t.life, 0, 12, 0, 120);
+    fill(255, 180, 120, a);
+
+    rectMode(CENTER);
+    rect(t.x, t.y, 16, 16);
+
+    t.life--;
+
+    if (t.life <= 0) {
+      trail.splice(i, 1);
+    }
   }
 }
 

@@ -28,7 +28,7 @@ let platforms = [];
 
 // level constants
 let isGrounded = false;
-let jumpForce = 12;
+let jumpForce = 6;
 
 // camera view size
 const VIEWW = 320,
@@ -39,7 +39,7 @@ const FRAME_W = 32,
   FRAME_H = 32;
 
 // gravity
-const GRAVITY = 20;
+const GRAVITY = 10;
 
 function preload() {
   // --- IMAGES ---
@@ -55,6 +55,7 @@ function setup() {
   player = new Sprite(VIEWW / 2, VIEWH / 2, FRAME_W, FRAME_H);
   player.spriteSheet = playerImg;
   player.rotationLock = true;
+  player.collider = "dynamic";
 
   player.anis.w = FRAME_W;
   player.anis.h = FRAME_H;
@@ -78,21 +79,37 @@ function setup() {
   let p2 = new Sprite(230, 85, 90, 12, "static");
 
   platforms.push(p1, p2);
+  // --- Style sprites (simple palette) ---
+  ground.color = color(70, 60, 90);
+  ground.stroke = color(20, 20, 30);
+  ground.strokeWeight = 2;
+
+  for (let p of platforms) {
+    p.color = color(120, 160, 90);
+    p.stroke = color(30, 40, 25);
+    p.strokeWeight = 2;
+  }
+  ground.friction = 0.8;
+  for (let p of platforms) p.friction = 0.8;
 }
 
 function draw() {
-  background("skyblue");
+  background(170, 220, 255);
 
-  // --- Ground check (update first) ---
+  // --- Ground check first ---
   isGrounded = player.colliding(ground);
   for (let p of platforms) {
     if (player.colliding(p)) isGrounded = true;
   }
 
+  // --- Clamp tiny landing bounce ---
+  if (isGrounded && player.vel.y > 0) {
+    player.vel.y = 0;
+  }
+
   // --- Movement ---
   let moveSpeed = 5;
 
-  // Horizontal movement (hold to move)
   if (kb.pressing("a") || kb.pressing("left")) {
     player.vel.x = -moveSpeed;
     player.mirror.x = true;
@@ -103,17 +120,22 @@ function draw() {
     player.vel.x = 0;
   }
 
-  // Jump (press once)
+  // --- Jump (press once) ---
   if ((kb.presses("w") || kb.presses("up")) && isGrounded) {
     player.vel.y = -jumpForce;
+
+    // Prevent extreme jump velocities
+    if (player.vel.y < -8) player.vel.y = -8;
+
+    isGrounded = false;
   }
 
-  // --- Animation ---
-  if (!isGrounded) {
-    player.changeAni("jump");
-  } else if (player.vel.x !== 0) {
-    player.changeAni("run");
-  } else {
-    player.changeAni("idle");
+  // --- Decide animation once per frame ---
+  let desiredAni = "idle";
+  if (!isGrounded) desiredAni = "jump";
+  else if (player.vel.x !== 0) desiredAni = "run";
+
+  if (player.ani?.name !== desiredAni) {
+    player.changeAni(desiredAni);
   }
 }

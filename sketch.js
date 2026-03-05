@@ -146,6 +146,11 @@ function setup() {
 }
 
 function draw() {
+  // Lock camera to prevent transform drift
+  camera.x = width / 2;
+  camera.y = height / 2;
+  camera.zoom = 1;
+
   push();
   applyShake();
 
@@ -188,7 +193,7 @@ function draw() {
 
   player.vel.x = constrain(player.vel.x, -MAX_RUN_SPEED, MAX_RUN_SPEED);
 
-  // --- Jump (W / Up) ---
+  // --- Jump (W / Up, keep Space for attack) ---
   if (
     (kb.presses("w") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
@@ -221,11 +226,27 @@ function draw() {
     player.changeAni("attack");
   }
 
-  // --- Manual draw order ---
+  // --- Draw sprites manually (stable) ---
   allSprites.draw();
   updateParticles();
 
+  // --- Debug overlay (temporary) ---
   pop();
+  fill(0);
+  noStroke();
+  textSize(10);
+  text(
+    "sprites: " +
+      allSprites.length +
+      "  x:" +
+      nf(player.x, 1, 1) +
+      "  y:" +
+      nf(player.y, 1, 1) +
+      "  vy:" +
+      nf(player.vel.y, 1, 2),
+    6,
+    14,
+  );
 }
 
 function updateParticles() {

@@ -81,8 +81,7 @@ function setup() {
   allSprites.pixelPerfect = true;
 
   world.gravity.y = GRAVITY;
-
-  player = new Sprite(VIEWW / 2, VIEWH / 2, FRAME_W, FRAME_H);
+  player = new Sprite(VIEWW / 2, 50, FRAME_W, FRAME_H);
   player.spriteSheet = playerImg;
   player.rotationLock = true;
   player.collider = "dynamic";
@@ -128,9 +127,11 @@ function setup() {
 
   jumpOsc.start();
   jumpOsc.amp(0);
-
-  jumpEnv.setADSR(0.01, 0.05, 0.1, 0.1);
-  jumpEnv.setRange(0.25, 0);
+  jumpOsc.freq(520);
+  jumpEnv.play(jumpOsc);
+  // Jump
+  jumpEnv.setADSR(0.005, 0.04, 0.0, 0.06);
+  jumpEnv.setRange(0.22, 0);
 
   // --- Land sound ---
   landOsc = new p5.Oscillator("sine");
@@ -138,9 +139,11 @@ function setup() {
 
   landOsc.start();
   landOsc.amp(0);
-
-  landEnv.setADSR(0.01, 0.08, 0.05, 0.1);
-  landEnv.setRange(0.2, 0);
+  landOsc.freq(120);
+  landEnv.play(landOsc);
+  // Land
+  landEnv.setADSR(0.005, 0.06, 0.0, 0.08);
+  landEnv.setRange(0.18, 0);
 }
 
 function draw() {
@@ -152,9 +155,9 @@ function draw() {
   let wasGrounded = isGrounded;
 
   // --- Ground check ---
-  isGrounded = player.colliding(ground);
+  isGrounded = isStandingOn(ground);
   for (let p of platforms) {
-    if (player.colliding(p)) isGrounded = true;
+    if (isStandingOn(p)) isGrounded = true;
   }
 
   // Coyote time
@@ -308,4 +311,16 @@ function applyShake() {
     shakeFrames--;
     if (shakeFrames === 0) shakeStrength = 0;
   }
+}
+
+function isStandingOn(s, tolerance = 2) {
+  // True only when the player is on top of the surface (not hitting sides/underside)
+  let playerBottom = player.y + player.h / 2;
+  let surfaceTop = s.y - s.h / 2;
+
+  let closeEnough = abs(playerBottom - surfaceTop) <= tolerance;
+  let aboveSurface = player.y < s.y; // player center is above the surface center
+  let fallingOrStill = player.vel.y >= 0; // only count as grounded when moving downward/still
+
+  return player.colliding(s) && closeEnough && aboveSurface && fallingOrStill;
 }

@@ -194,14 +194,9 @@ function draw() {
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
 
-  // --- Continuous trail while airborne ---
-  if (!isGrounded) {
-    trail.push({ x: player.x, y: player.y, life: 10 });
-  }
-
-  // --- Landing trigger (more reliable) ---
-  // Case A: ground state changes from air -> ground while falling
-  if (!wasGrounded && isGrounded && prevVy > 0.1 && landCooldown === 0) {
+  // --- Landing trigger (velocity-based, very reliable) ---
+  // If we were falling last frame and now vertical velocity got stopped, treat as landing
+  if (prevVy > 0.8 && abs(player.vel.y) < 0.05 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
@@ -212,15 +207,16 @@ function draw() {
     landCooldown = 10;
   }
 
-  // Case B: backup trigger if physics resolves collision without flipping isGrounded cleanly
-  if (
-    !isGrounded &&
-    prevVy > 0.8 &&
-    landCooldown === 0 &&
-    player.colliding(ground)
-  ) {
-    spawnDust(player.x, player.y + player.h / 2, 10);
-    startShake(10, 2.5);
+  // --- Trail only while falling (short + clean) ---
+  if (!isGrounded && player.vel.y > 0.5) {
+    trail.push({ x: player.x, y: player.y, life: 6 });
+  }
+
+  // --- Landing trigger (single reliable rule) ---
+  // Use velocity-based landing detection to avoid missing contact frames
+  if (prevVy > 0.8 && abs(player.vel.y) < 0.05 && landCooldown === 0) {
+    spawnDust(player.x, player.y + player.h / 2, 12);
+    startShake(12, 3);
 
     landOsc.amp(0);
     landOsc.freq(120);
@@ -276,14 +272,14 @@ function updateParticles() {
 }
 
 function updateTrail() {
-  // Draw jump trail as soft puffs instead of hard blocks
+  // Draw jump trail as short-lived puffs
   noStroke();
   for (let i = trail.length - 1; i >= 0; i--) {
     let t = trail[i];
 
-    let a = map(t.life, 0, 10, 0, 90);
+    let a = map(t.life, 0, 6, 0, 80);
     fill(255, 255, 255, a);
-    circle(t.x, t.y + 6, 10);
+    circle(t.x, t.y + 6, 8);
 
     t.life--;
 

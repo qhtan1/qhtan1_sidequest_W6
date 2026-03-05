@@ -285,8 +285,21 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (FIXED: only uses landCooldown) ---
-  if (!wasGrounded && isGrounded && lastVy > 0.2 && landCooldown === 0) {
+  // --- Landing trigger (state + collision fallback) ---
+  // Some edge cases won't flip isGrounded cleanly on the exact landing frame,
+  // so we also use collided() as a reliable "new contact" signal.
+  let landedByState = !wasGrounded && isGrounded;
+  let landedByCollision = player.collided(ground);
+
+  for (let p of platforms) {
+    if (player.collided(p)) landedByCollision = true;
+  }
+
+  if (
+    (landedByState || landedByCollision) &&
+    lastVy > 0.2 &&
+    landCooldown === 0
+  ) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(10, 2.5);
 
@@ -463,7 +476,7 @@ function applyShake() {
   }
 }
 
-function isStandingOn(s, tolerance = 3) {
+function isStandingOn(s, tolerance = 5) {
   // True only when the player is on top of the surface (not hitting sides/underside)
   let playerBottom = player.y + player.h / 2;
   let surfaceTop = s.y - s.h / 2;
@@ -615,14 +628,16 @@ function drawCoins() {
 }
 
 function drawUI() {
-  // Minimal UI overlay
+  // Minimal UI overlay (kept away from wall tiles)
   push();
   camera.off();
 
   fill(0);
   noStroke();
   textSize(12);
-  text("Coins: " + coinCount, 10, 18);
+
+  // Move UI inward so it won't overlap wall art
+  text("Coins: " + coinCount, 44, 18);
 
   camera.on();
   pop();

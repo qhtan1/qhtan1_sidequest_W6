@@ -60,6 +60,7 @@ const COYOTE_FRAMES = 6; // small forgiveness window
 let coyoteTimer = 0;
 let landCooldown = 0; // landing trigger cooldown in frames
 let lastVy = 0; // last frame vertical speed (for reliable landing detection)
+let wasGrounded = isGrounded;
 
 const JUMP_FORCE = 6; // keep it modest
 
@@ -109,12 +110,12 @@ function setup() {
   player.friction = 0;
   player.bounciness = 0;
 
-  // --- Ground ---
-  ground = new Sprite(width / 2, height - 20, width, 40, "static");
+  // --- Ground collider (thin, aligned to tile top) ---
+  ground = new Sprite(width / 2, height - 16, width, 10, "static");
 
-  // --- Platforms (must be inside the 320x180 view) ---
-  let p1 = new Sprite(90, 120, 90, 12, "static");
-  let p2 = new Sprite(230, 85, 90, 12, "static");
+  // --- Platform colliders (thin, aligned to tile top) ---
+  let p1 = new Sprite(90, 120, 60, 10, "static");
+  let p2 = new Sprite(230, 85, 60, 10, "static");
 
   platforms.push(p1, p2);
   // --- Style sprites (simple palette) ---
@@ -148,6 +149,8 @@ function setup() {
 
   // Audio will be enabled on first user input (reliable browser behavior)
   audioEnabled = false;
+  ground.visible = false;
+  for (let p of platforms) p.visible = false;
 }
 
 function draw() {
@@ -223,9 +226,9 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (grounded transition + lastVy) ---
-  // This does NOT depend on collided/colliding event timing.
-  if (!wasGrounded && isGrounded && lastVy > 0.6 && landCooldown === 0) {
+  // --- Landing trigger (state transition, guaranteed) ---
+  // Play landing feedback when we transition from air -> grounded
+  if (!wasGrounded && isGrounded && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
@@ -368,7 +371,7 @@ function spawnDust(x, y, count) {
 }
 
 function drawGroundTiles() {
-  // Draw repeating ground tiles across the ground collider
+  // Draw ground tiles with TOP aligned to the collider top (so player stands on the top edge)
   if (!groundImg) return;
 
   push();
@@ -376,20 +379,24 @@ function drawGroundTiles() {
 
   let left = ground.x - ground.w / 2;
   let right = ground.x + ground.w / 2;
-  let top = ground.y - ground.h / 2;
+
+  let colliderTop = ground.y - ground.h / 2;
 
   let tileW = 32;
   let tileH = 32;
 
+  // Place tile so its bottom sits on colliderTop
+  let tileCenterY = colliderTop + tileH / 2;
+
   for (let x = left; x < right; x += tileW) {
-    image(groundImg, x + tileW / 2, top + tileH / 2, tileW, tileH);
+    image(groundImg, x + tileW / 2, tileCenterY, tileW, tileH);
   }
 
   pop();
 }
 
 function drawPlatformTiles() {
-  // Draw platform tiles: left cap + stretch + right cap
+  // Draw platform tiles with TOP aligned to the collider top
   if (!platformLCImg || !platformRCImg) return;
 
   push();
@@ -401,18 +408,20 @@ function drawPlatformTiles() {
   for (let p of platforms) {
     let left = p.x - p.w / 2;
     let right = p.x + p.w / 2;
-    let y = p.y;
+
+    let colliderTop = p.y - p.h / 2;
+    let tileCenterY = colliderTop + tileH / 2;
 
     // Left cap
-    image(platformLCImg, left + tileW / 2, y, tileW, tileH);
+    image(platformLCImg, left + tileW / 2, tileCenterY, tileW, tileH);
 
-    // Middle fill (reuse left cap scaled slightly if no middle tile exists)
+    // Middle fill
     for (let x = left + tileW; x < right - tileW; x += tileW) {
-      image(platformLCImg, x + tileW / 2, y, tileW, tileH);
+      image(platformLCImg, x + tileW / 2, tileCenterY, tileW, tileH);
     }
 
     // Right cap
-    image(platformRCImg, right - tileW / 2, y, tileW, tileH);
+    image(platformRCImg, right - tileW / 2, tileCenterY, tileW, tileH);
   }
 
   pop();

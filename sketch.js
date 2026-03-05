@@ -154,31 +154,28 @@ function draw() {
 
   let wasGrounded = isGrounded;
 
-  // --- Ground check ---
+  // --- Ground check (top-only) ---
   isGrounded = isStandingOn(ground);
   for (let p of platforms) {
     if (isStandingOn(p)) isGrounded = true;
   }
 
-  // Coyote time
+  // --- Coyote time ---
   if (isGrounded) coyoteTimer = COYOTE_FRAMES;
   else coyoteTimer = max(0, coyoteTimer - 1);
 
-  // Landing VFX
+  // --- Landing event ---
   if (!wasGrounded && isGrounded) {
     spawnDust(player.x, player.y + player.h / 2, 10);
-    startShake(10, 2);
-
-    landOsc.freq(120);
-    landEnv.play(landOsc);
+    startShake(12, 3);
   }
 
-  // Clamp landing bounce
+  // --- Clamp tiny landing bounce ---
   if (isGrounded && player.vel.y > 0) {
     player.vel.y = 0;
   }
 
-  // --- Movement ---
+  // --- Horizontal movement (accelerated + capped) ---
   if (kb.pressing("a") || kb.pressing("left")) {
     player.vel.x -= MOVE_ACCEL;
     player.mirror.x = true;
@@ -192,43 +189,26 @@ function draw() {
 
   player.vel.x = constrain(player.vel.x, -MAX_RUN_SPEED, MAX_RUN_SPEED);
 
-  // --- Jump ---
+  // --- Jump (W / Up only, keep Space for attack) ---
   if (
-    (kb.presses("w") || kb.presses(" ") || kb.presses("up")) &&
+    (kb.presses("w") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
   ) {
     player.vel.y = -JUMP_FORCE;
     coyoteTimer = 0;
     spawnDust(player.x, player.y + player.h / 2, 8);
   }
-  player.vel.y = -JUMP_FORCE;
-  coyoteTimer = 0;
-
-  spawnDust(player.x, player.y + player.h / 2, 8);
-
-  // play jump sound
-  jumpOsc.freq(520);
-  jumpEnv.play(jumpOsc);
-
-  // start trail
-  for (let i = 0; i < 3; i++) {
-    trail.push({
-      x: player.x,
-      y: player.y,
-      life: 12,
-    });
-  }
 
   // --- Velocity clamps ---
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
 
-  // --- Collision dust ---
-  if (player.colliding(ground) && abs(player.vel.x) > 2.5 && isGrounded) {
+  // --- Collision dust (simple) ---
+  if (isGrounded && abs(player.vel.x) > 2.5 && player.colliding(ground)) {
     spawnDust(player.x, player.y + player.h / 2, 2);
   }
 
-  // --- Animation ---
+  // --- Animation (decide once per frame) ---
   let desiredAni = "idle";
   if (!isGrounded) desiredAni = "jump";
   else if (abs(player.vel.x) > 0.2) desiredAni = "run";
@@ -237,23 +217,13 @@ function draw() {
     player.changeAni(desiredAni);
   }
 
-  updateParticles();
-  updateTrail();
-  pop();
-}
-
-function spawnDust(x, y, count) {
-  // Spawn simple dust particles
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x: x + random(-6, 6),
-      y: y + random(-2, 2),
-      vx: random(-1.2, 1.2),
-      vy: random(-1.8, -0.2),
-      life: int(random(12, 22)),
-      r: 3,
-    });
+  // --- Attack (Space) ---
+  if (kb.presses(" ")) {
+    player.changeAni("attack");
   }
+
+  updateParticles();
+  pop();
 }
 
 function updateParticles() {
@@ -319,8 +289,8 @@ function isStandingOn(s, tolerance = 2) {
   let surfaceTop = s.y - s.h / 2;
 
   let closeEnough = abs(playerBottom - surfaceTop) <= tolerance;
-  let aboveSurface = player.y < s.y; // player center is above the surface center
-  let fallingOrStill = player.vel.y >= 0; // only count as grounded when moving downward/still
+  let aboveSurface = player.y < s.y;
+  let fallingOrStill = player.vel.y >= 0;
 
   return player.colliding(s) && closeEnough && aboveSurface && fallingOrStill;
 }

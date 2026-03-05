@@ -55,6 +55,7 @@ const MAX_RUN_SPEED = 3.5;
 const MAX_FALL_SPEED = 8; // clamp falling
 const COYOTE_FRAMES = 6; // small forgiveness window
 let coyoteTimer = 0;
+let landCooldown = 0; // landing trigger cooldown in frames
 
 const JUMP_FORCE = 6; // keep it modest
 
@@ -143,6 +144,9 @@ function draw() {
   applyShake();
   background(170, 220, 255);
 
+  // Reduce landing trigger spam
+  if (landCooldown > 0) landCooldown--;
+
   // --- Ground check (top-only) ---
   let wasGrounded = isGrounded;
   let prevVy = player.vel.y;
@@ -184,27 +188,45 @@ function draw() {
     jumpOsc.amp(0);
     jumpOsc.freq(520);
     jumpEnv.play(jumpOsc);
-
-    // Trail burst (captures a few snapshots)
-    for (let i = 0; i < 4; i++) {
-      trail.push({ x: player.x, y: player.y, life: 12 });
-    }
   }
 
   // --- Velocity clamps ---
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
 
-  // --- Instant landing trigger ---
-  // Trigger when we were falling and now we're grounded (or vertical speed got clamped)
-  if (!wasGrounded && isGrounded && prevVy > 0.1) {
-    spawnDust(player.x, player.y + player.h / 2, 10);
+  // --- Continuous trail while airborne ---
+  if (!isGrounded) {
+    trail.push({ x: player.x, y: player.y, life: 10 });
+  }
+
+  // --- Landing trigger (more reliable) ---
+  // Case A: ground state changes from air -> ground while falling
+  if (!wasGrounded && isGrounded && prevVy > 0.1 && landCooldown === 0) {
+    spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
-    // Land sound
     landOsc.amp(0);
     landOsc.freq(120);
     landEnv.play(landOsc);
+
+    landCooldown = 10;
+  }
+
+  // Case B: backup trigger if physics resolves collision without flipping isGrounded cleanly
+  if (
+    !isGrounded &&
+    prevVy > 0.8 &&
+    landCooldown === 0 &&
+    player.colliding(ground)
+  ) {
+    spawnDust(player.x, player.y + player.h / 2, 10);
+    startShake(10, 2.5);
+
+    landOsc.amp(0);
+    landOsc.freq(120);
+    landEnv.play(landOsc);
+
+    landCooldown = 10;
   }
 
   // --- Clamp tiny landing bounce ---
@@ -233,14 +255,6 @@ function draw() {
   allSprites.draw();
   updateParticles();
   updateTrail();
-
-  // --- Debug overlay (optional) ---
-  // camera.off();
-  // fill(0);
-  // noStroke();
-  // textSize(10);
-  // text("x:" + nf(player.x, 1, 1) + " y:" + nf(player.y, 1, 1), 6, 14);
-  // camera.on();
 }
 
 function updateParticles() {
@@ -262,17 +276,14 @@ function updateParticles() {
 }
 
 function updateTrail() {
-  // Draw jump trail
+  // Draw jump trail as soft puffs instead of hard blocks
   noStroke();
-
   for (let i = trail.length - 1; i >= 0; i--) {
     let t = trail[i];
 
-    let a = map(t.life, 0, 12, 0, 120);
-    fill(255, 180, 120, a);
-
-    rectMode(CENTER);
-    rect(t.x, t.y, 16, 16);
+    let a = map(t.life, 0, 10, 0, 90);
+    fill(255, 255, 255, a);
+    circle(t.x, t.y + 6, 10);
 
     t.life--;
 
@@ -309,14 +320,19 @@ function applyShake() {
   }
 }
 
-function isStandingOn(s, tolerance = 2) {
+function isStandingOn(s, tolerance = 5) {
   // True only when the player is on top of the surface (not hitting sides/underside)
   let playerBottom = player.y + player.h / 2;
   let surfaceTop = s.y - s.h / 2;
 
+  // Allow a bit more tolerance to avoid missing the landing frame
   let closeEnough = abs(playerBottom - surfaceTop) <= tolerance;
+
+  // Player must be above the surface center (prevents underside hits)
   let aboveSurface = player.y < s.y;
-  let fallingOrStill = player.vel.y >= 0;
+
+  // Only count as grounded when falling or nearly still vertically
+  let fallingOrStill = player.vel.y >= -0.1;
 
   return player.colliding(s) && closeEnough && aboveSurface && fallingOrStill;
 }

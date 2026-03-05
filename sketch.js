@@ -56,6 +56,7 @@ const MAX_FALL_SPEED = 8; // clamp falling
 const COYOTE_FRAMES = 6; // small forgiveness window
 let coyoteTimer = 0;
 let landCooldown = 0; // landing trigger cooldown in frames
+let lastVy = 0; // last frame vertical speed (for reliable landing detection)
 
 const JUMP_FORCE = 6; // keep it modest
 
@@ -144,11 +145,7 @@ function draw() {
   applyShake();
   background(170, 220, 255);
 
-  // Reduce landing trigger spam
   if (landCooldown > 0) landCooldown--;
-
-  // --- Store previous vertical speed ---
-  let prevVy = player.vel.y;
 
   // --- Ground check (top-only) ---
   isGrounded = isStandingOn(ground);
@@ -160,7 +157,7 @@ function draw() {
   if (isGrounded) coyoteTimer = COYOTE_FRAMES;
   else coyoteTimer = max(0, coyoteTimer - 1);
 
-  // --- Horizontal movement (accelerated + capped) ---
+  // --- Horizontal movement ---
   if (kb.pressing("a") || kb.pressing("left")) {
     player.vel.x -= MOVE_ACCEL;
     player.mirror.x = true;
@@ -171,10 +168,9 @@ function draw() {
     player.vel.x *= MOVE_FRICTION;
     if (abs(player.vel.x) < 0.05) player.vel.x = 0;
   }
-
   player.vel.x = constrain(player.vel.x, -MAX_RUN_SPEED, MAX_RUN_SPEED);
 
-  // --- Jump (W / Up) ---
+  // --- Jump ---
   if (
     (kb.presses("w") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
@@ -184,7 +180,6 @@ function draw() {
 
     spawnDust(player.x, player.y + player.h / 2, 8);
 
-    // Jump sound
     jumpOsc.amp(0);
     jumpOsc.freq(520);
     jumpEnv.play(jumpOsc);
@@ -194,22 +189,19 @@ function draw() {
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
 
-  // --- Trail only while falling (short + clean) ---
+  // --- Trail only while falling ---
   if (!isGrounded && player.vel.y > 0.5) {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (event-based, reliable) ---
-  // collided() returns true only on the frame the collision starts
-  let landedNow = false;
-
-  if (player.collided(ground)) landedNow = true;
+  // --- Landing trigger (event-based + lastVy) ---
+  let landedNow = player.collided(ground);
   for (let p of platforms) {
     if (player.collided(p)) landedNow = true;
   }
 
-  // Only count it as a landing if we were falling
-  if (landedNow && prevVy > 0.6 && landCooldown === 0) {
+  // lastVy captures the real previous-frame falling speed
+  if (landedNow && lastVy > 0.6 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
@@ -218,14 +210,6 @@ function draw() {
     landEnv.play(landOsc);
 
     landCooldown = 10;
-
-    // Debug flash
-    camera.off();
-    fill(0);
-    noStroke();
-    textSize(12);
-    text("LAND!", 6, 28);
-    camera.on();
   }
 
   // --- Clamp tiny landing bounce ---
@@ -233,32 +217,28 @@ function draw() {
     player.vel.y = 0;
   }
 
-  // --- Collision dust (simple, ground only) ---
+  // --- Run dust ---
   if (isGrounded && abs(player.vel.x) > 2.5 && player.colliding(ground)) {
     spawnDust(player.x, player.y + player.h / 2, 2);
   }
 
-  // --- Animation (decide once per frame) ---
+  // --- Animation ---
   let desiredAni = "idle";
   if (!isGrounded) desiredAni = "jump";
   else if (abs(player.vel.x) > 0.2) desiredAni = "run";
 
-  // If attacking, let attack override briefly
   if (kb.presses(" ")) {
     player.changeAni("attack");
   } else if (player.ani?.name !== desiredAni) {
     player.changeAni(desiredAni);
   }
 
-  // --- Draw ---
   allSprites.draw();
   updateParticles();
   updateTrail();
-  camera.off();
-  fill(0);
-  textSize(10);
-  text("has collided(): " + typeof player.collided, 6, 40);
-  camera.on();
+
+  // --- Update lastVy at end of frame ---
+  lastVy = player.vel.y;
 }
 
 function updateParticles() {

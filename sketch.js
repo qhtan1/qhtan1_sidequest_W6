@@ -49,6 +49,10 @@ let landEnv;
 
 let groundImg, platformLCImg, platformRCImg;
 let audioEnabled = false;
+let wallLImg, wallRImg;
+
+// Impact sound (wall bump / attack)
+let hitOsc, hitEnv;
 
 // --- Control tuning ---
 const MOVE_ACCEL = 0.45;
@@ -61,6 +65,7 @@ let coyoteTimer = 0;
 let landCooldown = 0; // landing trigger cooldown in frames
 let lastVy = 0; // last frame vertical speed (for reliable landing detection)
 let wasGrounded = isGrounded;
+let wallL, wallR;
 
 const JUMP_FORCE = 6; // keep it modest
 
@@ -83,6 +88,8 @@ function preload() {
   groundImg = loadImage("assets/groundTile.png");
   platformLCImg = loadImage("assets/platformLC.png");
   platformRCImg = loadImage("assets/platformRC.png");
+  wallLImg = loadImage("assets/wallL.png");
+  wallRImg = loadImage("assets/wallR.png");
 }
 
 function setup() {
@@ -118,6 +125,16 @@ function setup() {
   let p2 = new Sprite(230, 85, 60, 10, "static");
 
   platforms.push(p1, p2);
+
+  // --- Walls (static colliders) ---
+  // Thin walls to keep player in bounds
+  wallL = new Sprite(2, height / 2, 6, height, "static");
+  wallR = new Sprite(width - 2, height / 2, 6, height, "static");
+
+  // Hide colliders, we will draw textures manually
+  wallL.visible = false;
+  wallR.visible = false;
+
   // --- Style sprites (simple palette) ---
   ground.color = color(70, 60, 90);
   ground.stroke = color(20, 20, 30);
@@ -144,8 +161,17 @@ function setup() {
   landEnv = new p5.Envelope();
   landOsc.start();
   landOsc.amp(0);
-  landEnv.setADSR(0.005, 0.06, 0.0, 0.08);
-  landEnv.setRange(0.18, 0);
+  landEnv.setADSR(0.001, 0.01, 0.0, 0.03);
+  landEnv.setRange(0.28, 0);
+
+  // --- Hit sound (wall bump / attack) ---
+  hitOsc = new p5.Oscillator("square");
+  hitEnv = new p5.Envelope();
+  hitOsc.start();
+  hitOsc.amp(0);
+
+  hitEnv.setADSR(0.001, 0.03, 0.0, 0.05);
+  hitEnv.setRange(0.16, 0);
 
   // Audio will be enabled on first user input (reliable browser behavior)
   audioEnabled = false;
@@ -226,11 +252,11 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (state transition, guaranteed) ---
-  // Play landing feedback when we transition from air -> grounded
-  if (!wasGrounded && isGrounded && landCooldown === 0) {
+  // --- Landing trigger (state transition, snappy) ---
+  // Trigger immediately on air->ground transition, with a small lastVy gate to avoid false positives
+  if (!wasGrounded && isGrounded && lastVy > 0.3 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
-    startShake(12, 3);
+    startShake(10, 2.5);
 
     if (audioEnabled) {
       landOsc.amp(0);
@@ -238,7 +264,7 @@ function draw() {
       landEnv.play(landOsc);
     }
 
-    landCooldown = 12;
+    landCooldown = 10;
   }
 
   // --- Clamp tiny landing bounce ---
@@ -258,8 +284,35 @@ function draw() {
 
   if (kb.presses(" ")) {
     player.changeAni("attack");
+
+    // Attack feedback: sparks in front of player
+    let fx = player.mirror.x ? player.x - 14 : player.x + 14;
+    spawnSparks(fx, player.y, 14);
+
+    if (audioEnabled) {
+      hitOsc.amp(0);
+      hitOsc.freq(420);
+      hitEnv.play(hitOsc);
+    }
   } else if (player.ani?.name !== desiredAni) {
     player.changeAni(desiredAni);
+  }
+
+  // --- Wall bump feedback ---
+  // Use colliding for continuous, but gate with cooldown so it doesn't spam
+  if (player.colliding(wallL) || player.colliding(wallR)) {
+    if (landCooldown === 0) {
+      spawnSparks(player.x, player.y, 10);
+      startShake(6, 1.8);
+
+      if (audioEnabled) {
+        hitOsc.amp(0);
+        hitOsc.freq(220);
+        hitEnv.play(hitOsc);
+      }
+
+      landCooldown = 6;
+    }
   }
 
   // --- Draw sprites (player uses sprite sheet) ---
@@ -277,17 +330,29 @@ function draw() {
 }
 
 function updateParticles() {
-  // Update and draw particles
+  // Update and draw particles (dust + sparks)
   noStroke();
   for (let i = particles.length - 1; i >= 0; i--) {
     let p = particles[i];
+
     p.x += p.vx;
     p.y += p.vy;
-    p.vy += 0.08; // gravity for dust
+
+    // Gravity
+    if (p.type === "spark") p.vy += 0.12;
+    else p.vy += 0.08;
+
+    // Slight drag
+    p.vx *= 0.98;
+
     p.life--;
 
-    let a = map(p.life, 0, 22, 0, 180);
-    fill(255, 255, 255, a);
+    let aMax = p.type === "spark" ? 220 : 180;
+    let a = map(p.life, 0, 22, 0, aMax);
+
+    if (p.type === "spark") fill(255, 235, 120, a);
+    else fill(255, 255, 255, a);
+
     circle(p.x, p.y, p.r);
 
     if (p.life <= 0) particles.splice(i, 1);
@@ -425,4 +490,20 @@ function drawPlatformTiles() {
   }
 
   pop();
+}
+
+function spawnSparks(x, y, count) {
+  // Spawn quick bright sparks (reuses particle system)
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: x + random(-4, 4),
+      y: y + random(-6, 2),
+      vx: random(-2.2, 2.2),
+      vy: random(-3.0, -0.8),
+      life: int(random(8, 14)),
+      r: random(2, 4),
+      // mark type for color
+      type: "spark",
+    });
+  }
 }

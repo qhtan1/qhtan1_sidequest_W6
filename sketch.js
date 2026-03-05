@@ -147,10 +147,10 @@ function draw() {
   // Reduce landing trigger spam
   if (landCooldown > 0) landCooldown--;
 
-  // --- Ground check (top-only) ---
-  let wasGrounded = isGrounded;
+  // --- Store previous vertical speed ---
   let prevVy = player.vel.y;
 
+  // --- Ground check (top-only) ---
   isGrounded = isStandingOn(ground);
   for (let p of platforms) {
     if (isStandingOn(p)) isGrounded = true;
@@ -194,27 +194,19 @@ function draw() {
   if (player.vel.y > MAX_FALL_SPEED) player.vel.y = MAX_FALL_SPEED;
   if (player.vel.y < -8) player.vel.y = -8;
 
-  // --- Landing trigger (velocity-based, very reliable) ---
-  // If we were falling last frame and now vertical velocity got stopped, treat as landing
-  if (prevVy > 0.8 && abs(player.vel.y) < 0.05 && landCooldown === 0) {
-    spawnDust(player.x, player.y + player.h / 2, 12);
-    startShake(12, 3);
-
-    landOsc.amp(0);
-    landOsc.freq(120);
-    landEnv.play(landOsc);
-
-    landCooldown = 10;
-  }
-
   // --- Trail only while falling (short + clean) ---
   if (!isGrounded && player.vel.y > 0.5) {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (single reliable rule) ---
-  // Use velocity-based landing detection to avoid missing contact frames
-  if (prevVy > 0.8 && abs(player.vel.y) < 0.05 && landCooldown === 0) {
+  // --- Landing trigger (collision-based, most reliable) ---
+  // If we were falling and now collide with ground/platform, treat as landing
+  let hitSurface = player.colliding(ground);
+  for (let p of platforms) {
+    if (player.colliding(p)) hitSurface = true;
+  }
+
+  if (prevVy > 0.8 && hitSurface && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 

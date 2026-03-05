@@ -67,6 +67,16 @@ let lastVy = 0; // last frame vertical speed (for reliable landing detection)
 let wasGrounded = isGrounded;
 let wallL, wallR;
 
+// Separate cooldowns (do NOT reuse landCooldown for hits)
+let hitCooldown = 0;
+
+// Collectibles
+let coins = [];
+let coinCount = 0;
+
+// Pickup sound
+let pickupOsc, pickupEnv;
+
 const JUMP_FORCE = 6; // keep it modest
 
 // camera view size
@@ -162,7 +172,7 @@ function setup() {
   landOsc.start();
   landOsc.amp(0);
   landEnv.setADSR(0.001, 0.01, 0.0, 0.03);
-  landEnv.setRange(0.28, 0);
+  landEnv.setRange(0.18, 0);
 
   // --- Hit sound (wall bump / attack) ---
   hitOsc = new p5.Oscillator("square");
@@ -172,6 +182,28 @@ function setup() {
 
   hitEnv.setADSR(0.001, 0.03, 0.0, 0.05);
   hitEnv.setRange(0.16, 0);
+
+  // --- Pickup sound (collectibles) ---
+  pickupOsc = new p5.Oscillator("triangle");
+  pickupEnv = new p5.Envelope();
+  pickupOsc.start();
+  pickupOsc.amp(0);
+  pickupEnv.setADSR(0.001, 0.03, 0.0, 0.06);
+  pickupEnv.setRange(0.18, 0);
+
+  // --- Collectibles (simple invisible sensors + we draw them ourselves) ---
+  coins = [];
+  coinCount = 0;
+
+  // Place a few coins near platforms
+  coins.push(new Sprite(70, 100, 10, 10, "static"));
+  coins.push(new Sprite(110, 100, 10, 10, "static"));
+  coins.push(new Sprite(230, 65, 10, 10, "static"));
+
+  for (let c of coins) {
+    c.collider = "static";
+    c.visible = false;
+  }
 
   // Audio will be enabled on first user input (reliable browser behavior)
   audioEnabled = false;
@@ -199,8 +231,9 @@ function draw() {
   }
 
   if (landCooldown > 0) landCooldown--;
+  if (hitCooldown > 0) hitCooldown--;
 
-  // --- Track grounded transitions reliably ---
+  // --- Track grounded transitions ---
   let wasGrounded = isGrounded;
 
   // --- Ground check (top-only) ---
@@ -252,9 +285,8 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (state transition, snappy) ---
-  // Trigger immediately on air->ground transition, with a small lastVy gate to avoid false positives
-  if (!wasGrounded && isGrounded && lastVy > 0.3 && landCooldown === 0) {
+  // --- Landing trigger (FIXED: only uses landCooldown) ---
+  if (!wasGrounded && isGrounded && lastVy > 0.2 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(10, 2.5);
 
@@ -282,6 +314,7 @@ function draw() {
   if (!isGrounded) desiredAni = "jump";
   else if (abs(player.vel.x) > 0.2) desiredAni = "run";
 
+  // --- Attack ---
   if (kb.presses(" ")) {
     player.changeAni("attack");
 
@@ -298,33 +331,59 @@ function draw() {
     player.changeAni(desiredAni);
   }
 
-  // --- Wall bump feedback ---
-  // Use colliding for continuous, but gate with cooldown so it doesn't spam
-  if (player.colliding(wallL) || player.colliding(wallR)) {
-    if (landCooldown === 0) {
-      spawnSparks(player.x, player.y, 10);
-      startShake(6, 1.8);
+  // --- Wall bump feedback (uses hitCooldown, NOT landCooldown) ---
+  if (
+    (player.colliding(wallL) || player.colliding(wallR)) &&
+    hitCooldown === 0
+  ) {
+    spawnSparks(player.x, player.y, 10);
+    startShake(6, 1.8);
+
+    if (audioEnabled) {
+      hitOsc.amp(0);
+      hitOsc.freq(220);
+      hitEnv.play(hitOsc);
+    }
+
+    hitCooldown = 6;
+  }
+
+  // --- Collectible pickup ---
+  for (let i = coins.length - 1; i >= 0; i--) {
+    let c = coins[i];
+    if (player.overlaps(c)) {
+      coins.splice(i, 1);
+      c.remove();
+      coinCount++;
+
+      spawnSparks(player.x, player.y - 6, 18);
+      startShake(6, 1.5);
 
       if (audioEnabled) {
-        hitOsc.amp(0);
-        hitOsc.freq(220);
-        hitEnv.play(hitOsc);
+        pickupOsc.amp(0);
+        pickupOsc.freq(880);
+        pickupEnv.play(pickupOsc);
       }
-
-      landCooldown = 6;
     }
   }
 
   // --- Draw sprites (player uses sprite sheet) ---
   allSprites.draw();
 
-  // --- Draw tile textures on top of colliders (visual only) ---
+  // --- Draw tile textures (visual only) ---
+  drawWallTiles();
   drawPlatformTiles();
   drawGroundTiles();
+
+  // --- Draw collectibles (simple gold circles) ---
+  drawCoins();
 
   // --- VFX ---
   updateParticles();
   updateTrail();
+
+  // --- UI ---
+  drawUI();
 
   lastVy = player.vel.y;
 }
@@ -404,7 +463,7 @@ function applyShake() {
   }
 }
 
-function isStandingOn(s, tolerance = 5) {
+function isStandingOn(s, tolerance = 3) {
   // True only when the player is on top of the surface (not hitting sides/underside)
   let playerBottom = player.y + player.h / 2;
   let surfaceTop = s.y - s.h / 2;
@@ -506,4 +565,65 @@ function spawnSparks(x, y, count) {
       type: "spark",
     });
   }
+}
+
+function drawWallTiles() {
+  // Draw wall textures aligned to collider (visual only)
+  if (!wallLImg || !wallRImg) return;
+
+  push();
+  imageMode(CENTER);
+
+  let tileW = 32;
+  let tileH = 32;
+
+  // Left wall
+  {
+    let x = wallL.x;
+    let top = wallL.y - wallL.h / 2;
+    for (let y = top; y < top + wallL.h; y += tileH) {
+      image(wallLImg, x, y + tileH / 2, tileW, tileH);
+    }
+  }
+
+  // Right wall
+  {
+    let x = wallR.x;
+    let top = wallR.y - wallR.h / 2;
+    for (let y = top; y < top + wallR.h; y += tileH) {
+      image(wallRImg, x, y + tileH / 2, tileW, tileH);
+    }
+  }
+
+  pop();
+}
+
+function drawCoins() {
+  // Draw collectibles as simple circles (keeps assets optional)
+  push();
+  noStroke();
+  fill(255, 215, 80);
+
+  for (let c of coins) {
+    circle(c.x, c.y, 8);
+    fill(255, 240, 160);
+    circle(c.x - 2, c.y - 2, 3);
+    fill(255, 215, 80);
+  }
+
+  pop();
+}
+
+function drawUI() {
+  // Minimal UI overlay
+  push();
+  camera.off();
+
+  fill(0);
+  noStroke();
+  textSize(12);
+  text("Coins: " + coinCount, 10, 18);
+
+  camera.on();
+  pop();
 }

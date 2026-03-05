@@ -146,12 +146,7 @@ function setup() {
 }
 
 function draw() {
-  // Lock camera to prevent transform drift
-  camera.x = width / 2;
-  camera.y = height / 2;
-  camera.zoom = 1;
-
-  push();
+  // Keep camera stable (shake modifies camera slightly)
   applyShake();
 
   background(170, 220, 255);
@@ -193,7 +188,7 @@ function draw() {
 
   player.vel.x = constrain(player.vel.x, -MAX_RUN_SPEED, MAX_RUN_SPEED);
 
-  // --- Jump (W / Up, keep Space for attack) ---
+  // --- Jump (W / Up) ---
   if (
     (kb.presses("w") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
@@ -226,12 +221,12 @@ function draw() {
     player.changeAni("attack");
   }
 
-  // --- Draw sprites manually (stable) ---
+  // --- Draw ---
   allSprites.draw();
   updateParticles();
 
   // --- Debug overlay (temporary) ---
-  pop();
+  camera.off();
   fill(0);
   noStroke();
   textSize(10);
@@ -247,6 +242,7 @@ function draw() {
     6,
     14,
   );
+  camera.on();
 }
 
 function updateParticles() {
@@ -295,14 +291,23 @@ function startShake(frames, strength) {
 }
 
 function applyShake() {
-  // Apply camera shake as a small canvas translation
+  // Apply camera shake without using translate()
   if (shakeFrames > 0) {
-    translate(
-      random(-shakeStrength, shakeStrength),
-      random(-shakeStrength, shakeStrength),
-    );
+    camera.x = width / 2 + random(-shakeStrength, shakeStrength);
+    camera.y = height / 2 + random(-shakeStrength, shakeStrength);
+    camera.zoom = 1;
+
     shakeFrames--;
-    if (shakeFrames === 0) shakeStrength = 0;
+    if (shakeFrames === 0) {
+      shakeStrength = 0;
+      camera.x = width / 2;
+      camera.y = height / 2;
+      camera.zoom = 1;
+    }
+  } else {
+    camera.x = width / 2;
+    camera.y = height / 2;
+    camera.zoom = 1;
   }
 }
 

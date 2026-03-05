@@ -199,14 +199,17 @@ function draw() {
     trail.push({ x: player.x, y: player.y, life: 6 });
   }
 
-  // --- Landing trigger (collision-based, most reliable) ---
-  // If we were falling and now collide with ground/platform, treat as landing
-  let hitSurface = player.colliding(ground);
+  // --- Landing trigger (event-based, reliable) ---
+  // collided() returns true only on the frame the collision starts
+  let landedNow = false;
+
+  if (player.collided(ground)) landedNow = true;
   for (let p of platforms) {
-    if (player.colliding(p)) hitSurface = true;
+    if (player.collided(p)) landedNow = true;
   }
 
-  if (prevVy > 0.8 && hitSurface && landCooldown === 0) {
+  // Only count it as a landing if we were falling
+  if (landedNow && prevVy > 0.6 && landCooldown === 0) {
     spawnDust(player.x, player.y + player.h / 2, 12);
     startShake(12, 3);
 
@@ -215,6 +218,14 @@ function draw() {
     landEnv.play(landOsc);
 
     landCooldown = 10;
+
+    // Debug flash
+    camera.off();
+    fill(0);
+    noStroke();
+    textSize(12);
+    text("LAND!", 6, 28);
+    camera.on();
   }
 
   // --- Clamp tiny landing bounce ---
@@ -222,7 +233,7 @@ function draw() {
     player.vel.y = 0;
   }
 
-  // --- Collision dust (simple) ---
+  // --- Collision dust (simple, ground only) ---
   if (isGrounded && abs(player.vel.x) > 2.5 && player.colliding(ground)) {
     spawnDust(player.x, player.y + player.h / 2, 2);
   }
@@ -243,6 +254,11 @@ function draw() {
   allSprites.draw();
   updateParticles();
   updateTrail();
+  camera.off();
+  fill(0);
+  textSize(10);
+  text("has collided(): " + typeof player.collided, 6, 40);
+  camera.on();
 }
 
 function updateParticles() {

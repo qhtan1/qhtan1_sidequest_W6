@@ -75,10 +75,9 @@ function preload() {
 }
 
 function setup() {
-  userStartAudio(); // enable audio after first user interaction
-
   new Canvas(VIEWW, VIEWH, "pixelated");
   allSprites.pixelPerfect = true;
+  allSprites.autoDraw = false; // disable auto draw to prevent sprites disappearing
 
   world.gravity.y = GRAVITY;
   player = new Sprite(VIEWW / 2, 50, FRAME_W, FRAME_H);
@@ -189,7 +188,7 @@ function draw() {
 
   player.vel.x = constrain(player.vel.x, -MAX_RUN_SPEED, MAX_RUN_SPEED);
 
-  // --- Jump (W / Up only, keep Space for attack) ---
+  // --- Jump (W / Up) ---
   if (
     (kb.presses("w") || kb.presses("up")) &&
     (isGrounded || coyoteTimer > 0)
@@ -222,7 +221,10 @@ function draw() {
     player.changeAni("attack");
   }
 
+  // --- Manual draw order ---
+  allSprites.draw();
   updateParticles();
+
   pop();
 }
 

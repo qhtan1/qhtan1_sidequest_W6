@@ -74,6 +74,15 @@ let hitCooldown = 0;
 let coins = [];
 let coinCount = 0;
 
+// Exit / win state
+let exitDoor;
+let exitActive = false;
+
+let winTimer = 0;
+
+// Win sound
+let winOsc, winEnv;
+
 // Pickup sound
 let pickupOsc, pickupEnv;
 
@@ -227,6 +236,19 @@ function setup() {
   audioEnabled = false;
   ground.visible = false;
   for (let p of platforms) p.visible = false;
+
+  // --- Exit door ---
+  exitDoor = new Sprite(width - 60, height - 40, 20, 30, "static");
+  exitDoor.visible = false;
+
+  // --- Win sound ---
+  winOsc = new p5.Oscillator("triangle");
+  winEnv = new p5.Envelope();
+  winOsc.start();
+  winOsc.amp(0);
+
+  winEnv.setADSR(0.001, 0.1, 0.0, 0.2);
+  winEnv.setRange(0.22, 0);
 }
 
 function draw() {
@@ -396,6 +418,40 @@ function draw() {
         pickupEnv.play(pickupOsc);
       }
     }
+
+    // --- Activate exit when all coins collected ---
+    if (coinCount >= 3) {
+      exitActive = true;
+    }
+
+    // --- Player reaches exit ---
+    if (exitActive && player.overlaps(exitDoor) && winTimer === 0) {
+      winTimer = 60;
+
+      startShake(15, 3);
+
+      if (audioEnabled) {
+        winOsc.freq(620);
+        winEnv.play(winOsc);
+      }
+    }
+
+    // --- Win flash ---
+    if (winTimer > 0) {
+      winTimer--;
+
+      push();
+      camera.off();
+
+      fill(255, 255, 255, map(winTimer, 0, 60, 0, 200));
+      rect(0, 0, width, height);
+
+      pop();
+
+      if (winTimer === 1) {
+        resetLevel();
+      }
+    }
   }
 
   // --- Hard bounds clamp (prevents edge launch / tunneling) ---
@@ -428,6 +484,7 @@ function draw() {
 
   // --- Draw collectibles (simple gold circles) ---
   drawCoins();
+  drawExitDoor();
 
   // --- VFX ---
   updateParticles();
@@ -679,4 +736,46 @@ function drawUI() {
 
   camera.on();
   pop();
+}
+
+function drawExitDoor() {
+  if (!exitActive) return;
+
+  push();
+
+  fill(80, 200, 120);
+  stroke(0);
+  rectMode(CENTER);
+
+  rect(exitDoor.x, exitDoor.y, 20, 30);
+
+  fill(255);
+  circle(exitDoor.x, exitDoor.y - 6, 6);
+
+  pop();
+}
+
+function resetLevel() {
+  coinCount = 0;
+  exitActive = false;
+
+  // remove existing coins
+  for (let c of coins) {
+    c.remove();
+  }
+
+  coins = [];
+
+  // respawn coins
+  coins.push(new Sprite(70, 100, 10, 10, "static"));
+  coins.push(new Sprite(110, 100, 10, 10, "static"));
+  coins.push(new Sprite(230, 65, 10, 10, "static"));
+
+  for (let c of coins) {
+    c.visible = false;
+  }
+
+  // reset player
+  player.x = 40;
+  player.y = height - 60;
 }

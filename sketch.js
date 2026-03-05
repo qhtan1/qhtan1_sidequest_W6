@@ -120,7 +120,7 @@ function setup() {
   player.ani = "idle";
 
   // Use a smaller collider box
-  player.w = 18;
+  player.w = 20;
   player.h = 20;
 
   // Do NOT remove colliders in commit 1 (keeps physics stable)
@@ -137,11 +137,29 @@ function setup() {
   platforms.push(p1, p2);
 
   // --- Walls (static colliders) ---
-  // Thin walls to keep player in bounds
-  wallL = new Sprite(2, height / 2, 6, height, "static");
-  wallR = new Sprite(width - 2, height / 2, 6, height, "static");
+  // Make walls thicker so visuals match physics and the player can't "half-enter" the wall
+  let wallThickness = 20;
 
-  // Hide colliders, we will draw textures manually
+  // Place walls slightly inside the canvas
+  wallL = new Sprite(
+    wallThickness / 2,
+    height / 2,
+    wallThickness,
+    height,
+    "static",
+  );
+  wallR = new Sprite(
+    width - wallThickness / 2,
+    height / 2,
+    wallThickness,
+    height,
+    "static",
+  );
+
+  wallL.friction = 0.2;
+  wallR.friction = 0.2;
+
+  // Hide colliders, we draw textures manually
   wallL.visible = false;
   wallR.visible = false;
 
@@ -380,6 +398,26 @@ function draw() {
     }
   }
 
+  // --- Hard bounds clamp (prevents edge launch / tunneling) ---
+  // Keep the player inside the walls even if physics steps get weird near corners
+  let leftBound = wallL.x + wallL.w / 2 + player.w / 2;
+  let rightBound = wallR.x - wallR.w / 2 - player.w / 2;
+
+  if (player.x < leftBound) {
+    player.x = leftBound;
+    if (player.vel.x < 0) player.vel.x = 0;
+  } else if (player.x > rightBound) {
+    player.x = rightBound;
+    if (player.vel.x > 0) player.vel.x = 0;
+  }
+
+  // Optional: prevent leaving the top of the screen
+  let topBound = player.h / 2 + 2;
+  if (player.y < topBound) {
+    player.y = topBound;
+    if (player.vel.y < 0) player.vel.y = 0;
+  }
+
   // --- Draw sprites (player uses sprite sheet) ---
   allSprites.draw();
 
@@ -592,7 +630,7 @@ function drawWallTiles() {
 
   // Left wall
   {
-    let x = wallL.x;
+    let x = wallL.x + wallL.w / 2 - 16;
     let top = wallL.y - wallL.h / 2;
     for (let y = top; y < top + wallL.h; y += tileH) {
       image(wallLImg, x, y + tileH / 2, tileW, tileH);
@@ -601,7 +639,7 @@ function drawWallTiles() {
 
   // Right wall
   {
-    let x = wallR.x;
+    let x = wallR.x - wallR.w / 2 + 16;
     let top = wallR.y - wallR.h / 2;
     for (let y = top; y < top + wallR.h; y += tileH) {
       image(wallRImg, x, y + tileH / 2, tileW, tileH);
